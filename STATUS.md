@@ -1,12 +1,11 @@
-# Current checkpoint — Stage 11: in-game SAVE/CONTINUE
+# Current checkpoint — Stage 12: input-driven dungeon exploration
 
-- Public source-only repository: `https://github.com/Hyperbog/Phantasy-Star-Decomp`, branch `main`.
-- Target ROM: English Rev. 3, 512 KiB, SHA-256 `9e324e92bd833b45126861b6f1d2dcbb51251bdf3df6d563ab3a3ff784d8cf88`.
-- Stage 10 adds opt-in cartridge SRAM persistence, physical mapper bank switching, verified 8/16/32 KiB file handling, hardware-level C tests, and RAM-image parity in paired gameplay replays.
-- 600-, 9,700-, and 14,500-frame native and same-runtime interpreter paths with SRAM enabled passed. Both modes produced identical initialized backup-RAM images; the game backup header is present.
-- Native execution still contains interpreter fallback; no generated ROM-equivalent code is tracked.
-- **Stage 11:** SAVE and fresh-process CONTINUE tested for **slots 1 and 2**, using a saved name `A`. The same controller inputs on an empty slot do not restore gameplay. The native/interpreter SRAM files match byte-for-byte for each slot.
-- **Control-flow fixes:** unwind-aware hybrid return boundary and live mapper dispatch on `$3FFF` → `$4002` fall-through.
-- Pending: other save slots, overwrite/delete, battle coverage, PSG per-write timing/PCM parity, transient VRAM/RAM/cycle discrepancies, independent emulator comparison, Windows release.
-- Do not interpret exact end-frame parity, generated function counts, or native-cycle share as verified whole-game completion.
-- Validation and source-only reproducibility: `docs/STAGE11_VALIDATION.md`, `docs/STAGE10_VALIDATION.md`, and `docs/STAGE9_VALIDATION.md`.
+- Repository: `https://github.com/Hyperbog/Phantasy-Star-Decomp`, source-only `main`.
+- Target ROM: exact English Rev. 3 512 KiB, SHA-256 `9e324e92bd833b45126861b6f1d2dcbb51251bdf3df6d563ab3a3ff784d8cf88`.
+- Prior Stage 11: original in-game SAVE/CONTINUE across separate processes in slots 1 and 2, plus negative empty-slot controls.
+- Stage 12: from the restored saved game, enter dungeon modes 0A/0B, turn, traverse seven westward tiles, return east, traverse three southward tiles, and return north.
+- Both SAVE slots 1 and 2 run the Stage 12 path. The 24 paired native/interpreter endpoint checks have byte-identical PNG, VRAM, CRAM, VDP registers, and ordered PSG write values; control-state fields agree. Minor differences in sampled RAM are confined to the system stack region.
+- The progress judge fails if both CPUs freeze in the same place; mode/position/direction are asserted at each checkpoint. 51 source-only unit tests pass.
+- **Pending and unverified:** enemy encounters, battle logic, dungeon items, other dungeons, save overwrites, PSG exact timing and PCM waveforms, intermediate full-RAM/VRAM parity, independent emulator (Mesen/hardware), Windows executable.
+- Engine/generator are unchanged in Stage 12. All new code is reproducible testing and documentation; no ROM assets/generated C go in the public Git history.
+- See `docs/STAGE12_VALIDATION.md` for exact evidence, scripts and limitations.

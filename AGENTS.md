@@ -13,3 +13,14 @@
 - For cartridge save tests, assert actual file-byte equality in addition to frame parity. Never report a working SAVE/CONTINUE flow based only on backup-RAM initialization.
 
 - Stage 11 uses actual in-game SAVE, fresh-process CONTINUE, and an erased-slot negative control for slots 1/2. Preserve these replay gates when changing mapper, fallback or code generation.
+
+## Stage 12: game-progress verification gate
+
+When a native/interpreter comparison passes but both outputs are stationary,
+that result establishes parity only, **not gameplay progress**. For dungeon
+routes, require real SAVE/CONTINUE prerequisites, chronological mode transitions,
+per-checkpoint `$C30A` facing and `$C30C` position assertions, actual coordinate
+changes, byte-exact final video memory, persistent SRAM integrity, and negative
+controls. Use `tools/run_dungeon_route.py` and `tests/test_stage12_dungeon.py`.
+Do not call these routes a verified battle; no encounter was observed. Never
+edit ROM-derived `generated/` files; change the generator and retest instead.
