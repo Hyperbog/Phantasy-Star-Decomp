@@ -1,0 +1,333 @@
+--- a/recompiler/src/code_generator.c
++++ b/recompiler/src/code_generator.c
+@@ -317,8 +317,12 @@
+     }
+     return n;
+ }
+ static const char *name_for_target(uint16_t T){
++    /* Crossing a CPU slot can change the physical ROM bank independently of
++     * the caller. Never resolve such a target by address alone: the live
++     * dispatcher must select the mapped variant or interpret a missing one. */
++    if (G_TR && ((T >> 14) != (G_TR->start >> 14))) return NULL;
+     /* A bank-multiplexed address must dispatch on the LIVE slot bank at runtime,
+      * not on the bank our static walk happened to infer at this site: the same
+      * call site can be reached with different banks, so a direct call to one
+      * variant would miscompile. Defer to call_by_address (which switches on
+@@ -807,9 +811,19 @@
+         int vidx[64]; int nv=0;
+         for (int j=0;j<fl->count && nv<64;j++)
+             if (fl->items[j].is_entry && fl->items[j].addr==a) vidx[nv++]=j;
+         if (nv == 1){
+-            fprintf(d,"    case 0x%04X: %s(); return;\n", a, fl->items[vidx[0]].name);
++            /* A unique statically discovered variant is NOT proof this bank
++             * stays mapped at runtime. Guard every switchable-slot entry;
++             * a bank mismatch must reach hybrid interpretation, not execute
++             * stale C for the wrong ROM page. The first 1KiB is fixed. */
++            int b=fl->items[vidx[0]].bank;
++            int rb=(b >= 0) ? b : (a >> 14);
++            if (a >= 0x0400)
++                fprintf(d,"    case 0x%04X: if (sms_slot_bank(0x%04X) == %d) { %s(); return; } break;\n",
++                        a,a,rb,fl->items[vidx[0]].name);
++            else
++                fprintf(d,"    case 0x%04X: %s(); return;\n", a, fl->items[vidx[0]].name);
+         } else {
+             /* runtime bank for a variant: explicit bank, or the slot's default
+              * (slot index) for a fixed (-1) entry. */
+             fprintf(d,"    case 0x%04X: switch (sms_slot_bank(0x%04X)){\n", a, a);
+--- a/recompiler/src/function_finder.c
++++ b/recompiler/src/function_finder.c
+@@ -402,8 +402,14 @@
+     uint16_t stack[4096]; int sp=0;
+     stack[sp++]=start;
+     while (sp>0){
+         uint16_t pc=stack[--sp];
++        /* A trace carries one entry-bank context. Following an inlined jump
++         * into another 16KiB slot under its reset bank is UNSOUND when the
++         * caller has changed a Sega mapper register (e.g. JP $8000 from a
++         * bank-12 sound caller). Defer such a target to the live dispatcher.
++         * Crossing slots is a function boundary, not an illegal opcode. */
++        if ((pc >> 14) != start_slot) continue;
+         if (insns_have(out,pc)) continue;
+         /* ROM bank for pc's slot: addresses in the entry's own slot read under
+          * the entry bank (so e.g. a bank-3 slot-1 function at $4006 decodes ROM
+          * $C006); other slots use the default reset mapping (slot i = bank i). */
+--- a/runner/glue.c
++++ b/runner/glue.c
+@@ -126,8 +126,17 @@
+  * That discriminates a renderer/shared bug (identical state, different pixels)
+  * from a CPU/recomp bug (state itself diverges) and is immune to the hybrid-
+  * overlap confound, since it compares actual machine state rather than output. */
+ static FILE *g_vdp_trace;
++/* Both CPU instances must be available to the per-frame diagnostics. */
++static z80 g_hz;
++static bool g_hz_init;
++static bool g_reference_mode;
++/* During a long hybrid fallback, g_z80.cyc is held at the entry clock while
++ * the live interpreter g_hz.cyc advances from zero. Frame telemetry must use
++ * the actual CPU clock rather than the stale native register file. */
++static bool g_hybrid_active;
++static uint64_t g_hybrid_base;
+ static uint64_t fnv1a64(const void *buf, size_t n){
+     const uint8_t *p = (const uint8_t*)buf;
+     uint64_t h = 1469598103934665603ULL;
+     for (size_t i=0;i<n;i++){ h ^= p[i]; h *= 1099511628211ULL; }
+@@ -203,8 +212,12 @@
+     }
+     fclose(f);
+ }
+ static void manifest_record(uint16_t addr){
++    /* Self-reported dispatch misses are NOT an independent oracle. Require an
++     * explicit opt-in before persisting them as next-generation code seeds.
++     * Diagnostic logging to dispatch_misses.log is unaffected. */
++    if (!getenv("SMS_RECORD_DISPATCH_MANIFEST")) return;
+     uint8_t b0=(uint8_t)g_bank[0], b1=(uint8_t)g_bank[1], b2=(uint8_t)g_bank[2];
+     if (manifest_has(addr,b0,b1,b2) || g_manifest_n >= MANIFEST_MAX) return;
+     uint32_t crc = mb_code_crc(addr);
+     ManifestSig *m=&g_manifest[g_manifest_n++];
+@@ -440,9 +453,15 @@
+         if (g_is_gg && p == 0x06) psg_write_stereo(v);   /* GG stereo routing register */
+         return;                                          /* $3E mem-control etc.: not modelled */
+     }
+     if (p < 0x80){                                       /* PSG data ($40-$7F, canonically $7F) */
+-        if (g_psg_log) fprintf(g_psg_log,"%llu,%u\n",(unsigned long long)g_z80.cyc,v);
++        if (g_psg_log){
++            /* Interpreter mode uses g_hz; an active hybrid call holds g_z80
++             * at the caller snapshot. Match the frame trace's effective clock. */
++            uint64_t effective_cyc = g_reference_mode ? g_hz.cyc :
++                (g_hybrid_active ? g_hybrid_base + g_hz.cyc : g_z80.cyc);
++            fprintf(g_psg_log,"%llu,%u\n",(unsigned long long)effective_cyc,v);
++        }
+         psg_write(v); return;
+     }
+     if (p < 0xC0){ if (p & 1) vdp_control_write(v); else vdp_data_write(v); return; }
+     (void)v;                                             /* $C0-$FF controllers: no output */
+@@ -463,15 +482,20 @@
+     }
+     if (g_vdp_trace){
+         /* End-of-frame VDP state == what the renderer would consume for this
+          * frame. Hash each region separately so the diff says WHICH diverged. */
+-        fprintf(g_vdp_trace, "%llu,%016llx,%016llx,%016llx,%016llx,%02X,%02X,%02X,%02X,%04X\n",
++        fprintf(g_vdp_trace, "%llu,%016llx,%016llx,%016llx,%016llx,%02X,%02X,%02X,%02X,%04X,%02X,%02X,%02X,%02X,%02X,%02X,%llu\n",
+                 (unsigned long long)g_frame,
+                 (unsigned long long)fnv1a64(g_vdp.vram, sizeof g_vdp.vram),
+                 (unsigned long long)fnv1a64(g_vdp.cram, sizeof g_vdp.cram),
+                 (unsigned long long)fnv1a64(g_vdp.reg,  sizeof g_vdp.reg),
+                 (unsigned long long)fnv1a64(g_ram, sizeof g_ram),
+-                g_vdp.reg[8], g_vdp.reg[9], g_vdp.reg[0], g_vdp.reg[1], g_z80.sp);
++                g_vdp.reg[8], g_vdp.reg[9], g_vdp.reg[0], g_vdp.reg[1],
++                g_reference_mode ? g_hz.sp : g_z80.sp,
++                g_ram[0x202],g_ram[0x208],g_ram[0x21B],g_ram[0x21D],
++                g_ram[0x264],g_ram[0x307],
++                (unsigned long long)(g_reference_mode ? g_hz.cyc :
++                    (g_hybrid_active ? g_hybrid_base + g_hz.cyc : g_z80.cyc)));
+         fflush(g_vdp_trace);
+     }
+     {   /* env-armed: dump the function-entry ring at a target frame to expose a
+          * spin loop (which functions are repeating when the game is stuck). */
+@@ -743,10 +767,8 @@
+  * computed-call-via-jp-hl note). This holds for both a computed CALL (caller
+  * pushed the continuation: entry frame == that continuation) and a tail jump-
+  * table dispatch (entry frame == the parent's return) - in both cases the
+  * routine's RET unwinds exactly one C level, matching call_by_address. */
+-static z80  g_hz;
+-static bool g_hz_init;
+ 
+ static uint8_t hyb_read (void *u, uint16_t a){ (void)u; return sms_read8(a); }
+ static void    hyb_write(void *u, uint16_t a, uint8_t v){ (void)u; sms_write8(a, v); }
+ static uint8_t hyb_in   (z80 *z, uint8_t p){ (void)z; return sms_io_in(p); }
+@@ -819,8 +841,10 @@
+     }
+     state_to_hz();
+     g_hz.pc = addr;
+     const uint64_t base = g_z80.cyc;     /* absolute time at entry */
++    g_hybrid_active = true;
++    g_hybrid_base = base;
+     g_hz.cyc = 0;                        /* rebase: g_hz.cyc counts this call only */
+     const uint16_t entry_sp = g_hz.sp;
+     sms_enter(addr);                     /* record the hybrid target in the ring */
+ 
+@@ -856,10 +880,17 @@
+         int dsp = (int16_t)(g_hz.sp - sp0);
+         if (took_int){ if (dsp == -2) depth++; }          /* interrupt pushed PC      */
+         else if (cls > 0 && dsp == -2) depth++;           /* taken CALL/RST           */
+         else if (cls < 0 && dsp ==  2){                   /* taken RET/RETI/RETN      */
++            /* The native caller's return slot is authoritative. Some sound
++             * drivers use PUSH <continuation>; JP and inter-function RETs;
++             * syntactic CALL-depth therefore may remain nonzero even when the
++             * real Z80 stack has reached the entry return address. Returning
++             * here prevents the hybrid interpreter from also executing the
++             * native caller's ISR epilogue and popping its saved stack frame. */
++            if (sp0 == entry_sp) break;
+             if (depth > 0) depth--;
+-            else if (g_hz.sp > entry_sp) break;           /* returned to entry caller */
++            else if (g_hz.sp > entry_sp) break;           /* tail-jumped ISR */
+             /* else: push;jp(hl) continuation return -> keep interpreting */
+         }
+         if (++guard >= guard_max){
+             fprintf(stderr, "[hybrid] guard tripped: addr=%04X pc=%04X sp=%04X "
+@@ -868,8 +899,9 @@
+         }
+     }
+     state_from_hz();
+     g_z80.cyc = base + g_hz.cyc;         /* reapply rebased absolute time */
++    g_hybrid_active = false;
+     /* If the routine left an IRQ asserted (e.g. VBlank latched while iff1 was
+      * clear), deadline at the next instruction so native accepts it the instant
+      * it becomes eligible — not many instructions later at the next line. This
+      * is the hybrid->native handoff half of the interrupt-sampling fix. */
+@@ -1155,8 +1187,9 @@
+     glue_diff_init();                    /* differential harness (env-gated, no-op unless SMS_DIFF_ADDR) */
+ }
+ 
+ void glue_run_interp(void){
++    g_reference_mode = true;
+     g_running = true;
+     /* Reference CPU = superzazu over the shared glue bus/VDP/IO. */
+     z80_init(&g_hz);
+     g_hz.read_byte = hyb_read; g_hz.write_byte = hyb_write;
+@@ -1191,14 +1224,21 @@
+             (unsigned long long)g_frame, (unsigned long long)g_irq_taken,
+             (unsigned long long)g_irq_reentrant,
+             g_frame ? (double)g_irq_taken / (double)g_frame : 0.0,
+             g_sync_maxdepth);
++    /* A frame-limit exit may longjmp out of an active hybrid call before its
++     * duration is committed to g_hybrid_cyc. Include that call in the final
++     * timing ledger, otherwise the reported native share is exaggerated. */
++    uint64_t total_cyc = g_hybrid_active ? g_hybrid_base + g_hz.cyc : g_z80.cyc;
++    uint64_t interp_cyc = g_hybrid_cyc + (g_hybrid_active ? g_hz.cyc : 0);
++    uint64_t calls = g_hybrid_calls + (g_hybrid_active ? 1u : 0u);
+     fprintf(stderr, "[exec] hybrid(interp): %llu calls, %llu of %llu Z80 cyc = "
+-            "%.3f%% interp / %.3f%% static\n",
+-            (unsigned long long)g_hybrid_calls,
+-            (unsigned long long)g_hybrid_cyc, (unsigned long long)g_z80.cyc,
+-            g_z80.cyc ? 100.0 * (double)g_hybrid_cyc / (double)g_z80.cyc : 0.0,
+-            g_z80.cyc ? 100.0 * (double)(g_z80.cyc - g_hybrid_cyc) / (double)g_z80.cyc : 0.0);
++            "%.3f%% interp / %.3f%% static%s\n",
++            (unsigned long long)calls,
++            (unsigned long long)interp_cyc, (unsigned long long)total_cyc,
++            total_cyc ? 100.0 * (double)interp_cyc / (double)total_cyc : 0.0,
++            total_cyc ? 100.0 * (double)(total_cyc - interp_cyc) / (double)total_cyc : 0.0,
++            g_hybrid_active ? " (hybrid active at stop)" : "");
+     mmio_tally_dump();
+ }
+ 
+ #ifdef SMS_CYC_WATCH
+@@ -1238,9 +1278,9 @@
+     if (g_vdp_trace){ fclose(g_vdp_trace); g_vdp_trace = NULL; }
+     if (path){
+         g_vdp_trace = fopen(path, "w");
+         if (g_vdp_trace)
+-            fprintf(g_vdp_trace, "frame,vram_h,cram_h,reg_h,r8,r9,r0,r1\n");
++            fprintf(g_vdp_trace, "frame,vram_h,cram_h,reg_h,ram_h,r8,r9,r0,r1,sp,mode_c202,wait_c208,timer_c21b,timer_c21d,anim_c264,anim_c307,cycles\n");
+         else
+             fprintf(stderr, "[runner] cannot open vdp-trace %s\n", path);
+     }
+ }
+--- a/runner/main.c
++++ b/runner/main.c
+@@ -15,8 +15,10 @@
+ #include <stdint.h>
+ 
+ #include <stdbool.h>
+ #include <stdlib.h>
++#include <errno.h>
++#include <limits.h>
+ 
+ #ifdef SMS_HAVE_SDL
+ #include "host_sdl.h"
+ #include "video/sms_vdp.h"
+@@ -81,9 +83,10 @@
+ /* ---- headless scripted input (--press FRAME:KEYS, repeatable) ----
+  * KEYS letters: U D L R (d-pad), A=button1, B=button2, S=start; empty = release.
+  * Each directive sets player 1's held buttons from its frame until a later one.
+  * Deterministic input for automated tests — no window needed. */
+-static struct { uint64_t frame; uint8_t mask; } g_press[32];
++enum { SMS_SCRIPT_MAX_EVENTS = 512 };
++static struct { uint64_t frame; uint8_t mask; } g_press[SMS_SCRIPT_MAX_EVENTS];
+ static int g_press_n;
+ 
+ static uint8_t press_keys_to_mask(const char *s){
+     uint8_t m = 0;
+@@ -100,15 +103,39 @@
+         }
+     }
+     return m;
+ }
+-static void press_add(const char *tok){
+-    if (g_press_n >= (int)(sizeof g_press / sizeof g_press[0])) return;
+-    const char *colon = strchr(tok, ':');
+-    g_press[g_press_n].frame = strtoull(tok, NULL, 0);
+-    g_press[g_press_n].mask  = press_keys_to_mask(colon ? colon+1 : "");
++/* Reject malformed or overflowed events instead of silently dropping inputs.
++ * The frame parser matches strtoull's base-0 convention used previously. */
++static bool press_add(const char *tok){
++    if (g_press_n >= SMS_SCRIPT_MAX_EVENTS){
++        fprintf(stderr,"[runner] too many --press events (limit %d)\n",SMS_SCRIPT_MAX_EVENTS);
++        return false;
++    }
++    if (!tok || !*tok || *tok=='-'){
++        fprintf(stderr,"[runner] invalid --press event: missing frame\n");
++        return false;
++    }
++    errno=0;
++    char *end;
++    unsigned long long f=strtoull(tok,&end,0);
++    if (errno==ERANGE || end==tok || !end || (*end!=':' && *end!='\0')){
++        fprintf(stderr,"[runner] invalid --press frame: %s\n",tok);
++        return false;
++    }
++    const char *keys=(*end==':')?end+1:"";
++    for (const char *q=keys; *q; q++){
++        if (!strchr("UDLRABSudlrabs",*q)){
++            fprintf(stderr,"[runner] invalid --press key in %s\n",tok);
++            return false;
++        }
++    }
++    g_press[g_press_n].frame=(uint64_t)f;
++    g_press[g_press_n].mask=press_keys_to_mask(keys);
+     g_press_n++;
+-}
++    return true;
++}
++
+ static uint8_t press_provider(uint64_t frame){
+     uint8_t m = 0; uint64_t best = 0; int found = 0;
+     for (int i = 0; i < g_press_n; i++)
+         if (g_press[i].frame <= frame && (!found || g_press[i].frame >= best)){
+@@ -143,8 +170,9 @@
+     int  win_scale = 3;
+     bool interp = false;       /* oracle: run the reference superzazu interpreter */
+     const char *audio_wav = NULL;   /* dump PSG output to this WAV */
+     bool mute = false;              /* suppress live SDL audio (window build) */
++    bool check_input = false;       /* validate scripted input without a ROM */
+ #ifdef SMS_CYC_WATCH
+     const char *cyc_watch_file = NULL; uint16_t cyc_watch_addr = 0;
+ #endif
+ 
+@@ -164,15 +192,24 @@
+ #ifdef SMS_CYC_WATCH
+         else if (strcmp(argv[i],"--cyc-watch")==0 && i+2<argc){
+             cyc_watch_addr = (uint16_t)strtoul(argv[++i],NULL,0); cyc_watch_file = argv[++i]; }
+ #endif
+-        else if (strcmp(argv[i],"--press")==0 && i+1<argc) press_add(argv[++i]);
++        else if (strcmp(argv[i],"--press")==0){
++            if (i+1>=argc){ fprintf(stderr,"[runner] --press requires FRAME:KEYS\n"); return 2; }
++            if (!press_add(argv[++i])) return 2;
++        }
++        else if (strcmp(argv[i],"--check-input")==0) check_input = true;
+         else if (strcmp(argv[i],"--window")==0){
+             want_window = true;
+             if (i+1<argc && argv[i+1][0] != '-') win_scale = (int)strtol(argv[++i],NULL,0);
+         }
+         else if (argv[i][0] != '-') rom = argv[i];
+-        else fprintf(stderr,"[runner] unknown arg: %s\n", argv[i]);
++        else { fprintf(stderr,"[runner] unknown arg: %s\n", argv[i]); return 2; }
++    }
++    if (check_input){
++        printf("validated controller events: %d (limit %d)\n",
++               g_press_n, SMS_SCRIPT_MAX_EVENTS);
++        return 0;
+     }
+     if (!rom){
+         fprintf(stderr,"usage: %s <rom.sms|rom.gg> [--frames N] [--gg|--sms] "
+                        "[--window [scale]] [--audio-wav out.wav] [--mute] "

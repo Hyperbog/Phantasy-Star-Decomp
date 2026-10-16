@@ -1,0 +1,18 @@
+{
+  "recompiler/src/code_generator.c": {
+    "patched_sha256": "cb0a59c5dee4a210cf51c6b2c5e3093d1225e457da0fe566971b536a7b9932f0",
+    "upstream_sha256": "9874b3bd6f318b806e96ae50c78f0329345be401e8108414f7710620d920bf7c"
+  },
+  "recompiler/src/function_finder.c": {
+    "patched_sha256": "d65d515d09406eb0e76d2e9e8eeda7b5d35c3a6cae0b96cc824662f8f1cd65ee",
+    "upstream_sha256": "322855bbb3565c95a12ec5ddc528ec01c8a7712ceebbf5d300dff56cbdabb034"
+  },
+  "runner/glue.c": {
+    "patched_sha256": "a7ab24209a32421059f178c5ba4fabc0f3d12503c582772eac120a98ad066ab2",
+    "upstream_sha256": "7ace4f59a335fd9f885702e27a97e999301fe575d04e6065193ec53a6eb4fc83"
+  },
+  "runner/main.c": {
+    "patched_sha256": "869252d844289c7ca11402536c05b0991a70a2db9a66ac9198b1cdb9febaa5d1",
+    "upstream_sha256": "455d4e7156f73ca2d53c7e56caddb2d18e0f7a9de5789116913e86ce7e658224"
+  }
+}

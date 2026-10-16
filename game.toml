@@ -1,0 +1,33 @@
+# EXPERIMENTAL UNEXECUTED INPUT for mstan/smsggrecomp (Sonic sample schema).
+# Verified against the exact English Rev.3 ROM locally; NOT accepted by SmsRecomp yet.
+# Copy the user's licensed ROM to the project working directory as:
+# phantasy_star_en_rev3.sms (NOT committed).
+[game]
+output_prefix = "ps1en"
+platform = "sms"
+rom = "phantasy_star_en_rev3.sms"
+crc32 = 0x00BEF1D7
+
+[ram_layout]
+# ROM byte checks support $C202 as game-mode and $C208 as VBlank wait flag.
+game_mode = 0xC202
+# vblank_count omitted; $C208 is a wait flag, NOT a verified frame counter.
+
+[mapper]
+kind = "sega"
+
+[functions]
+extra = []
+blacklist = []
+
+# Four ROM-verified LE pointer tables; full engine execution NOT yet tested.
+# BANK=-1 is REQUIRED for the two fixed-ROM tables. main_sms.c reads tables
+# using slot default and passes target bank=-1 to bankstate_init, preserving
+# slot0=bank0 and slot1=bank1. bank=0 would decode three game modes in bank0
+# instead of their actual physical bank1. See tests/test_build_aot.py.
+# $018F IRQ dispatcher indexes the *byte offset* ($00..$16 step 2).
+# $00BE main game-mode table has 20 entries, modes 0..19 only.
+[jump_tables]
+addr  = [0x00BE, 0x018F, 0x82E5, 0x8530]
+bank  = [-1, -1, 12, 12]
+count = [20, 12, 5, 18]
