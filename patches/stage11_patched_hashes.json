@@ -1,0 +1,10 @@
+{
+  "recompiler/src/code_generator.c": {
+    "stage10_sha256": "cb0a59c5dee4a210cf51c6b2c5e3093d1225e457da0fe566971b536a7b9932f0",
+    "stage11_sha256": "268962036b78f438fbcb414cd9cdd3d46858eee7510518cf3950c65943dba896"
+  },
+  "runner/glue.c": {
+    "stage10_sha256": "bc82dc780ae2aadb55cebae3ead0ac78fd152c3c874e4c3d25807576ff624688",
+    "stage11_sha256": "302ea2d52b35cb6be33de47e215cdcec49819d1e2553f0d620849a29d5c31455"
+  }
+}

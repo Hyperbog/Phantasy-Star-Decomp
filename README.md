@@ -1,8 +1,8 @@
 # Phantasy Star — Native SMS Recompilation
 
-**Project:** *Phantasy Star*, Sega Master System, English Rev. 3, 1987. Game-specific repo for ROM-driven Z80 → C static recompilation, a mapper-aware hybrid interpreter fallback, and automated native/interpreter parity testing. **Current checkpoint: Stage 10 (cartridge SRAM).**
+**Project:** *Phantasy Star*, Sega Master System, English Rev. 3, 1987. Game-specific repo for ROM-driven Z80 → C static recompilation, a mapper-aware hybrid interpreter fallback, and automated native/interpreter parity testing. **Current checkpoint: Stage 11 (in-game SAVE/CONTINUE).**
 
-**Status:** A native Linux headless runner previously compiled from the original ROM. The Stage 9 private build reached 14,500 scripted frames, including title, introduction, Alis's home/dialogue, and overhead town. Native and bundled-interpreter runs had byte-identical final RAM, VRAM, CRAM, VDP registers, and frame PNG; 52,395 PSG writes matched by value in order. **Not a verified playable alpha**: per-write PSG timing and PCM waveforms differ; some intermediate memory snapshots disagree; no independent emulator parity; battles and saves untested. See `docs/STAGE9_VALIDATION.md`. The separate repository-bootstrap reproduction is recorded in `docs/REPOSITORY_BOOTSTRAP_VALIDATION.md`.
+**Status:** A native Linux headless runner previously compiled from the original ROM. The Stage 9 private build reached 14,500 scripted frames, including title, introduction, Alis's home/dialogue, and overhead town. Native and bundled-interpreter runs had byte-identical final RAM, VRAM, CRAM, VDP registers, and frame PNG; 52,395 PSG writes matched by value in order. **Not a verified playable alpha**: per-write PSG timing and PCM waveforms differ; some intermediate memory snapshots disagree; no independent emulator parity; battles untested and SAVE/CONTINUE validated only for slots 1 and 2. See `docs/STAGE9_VALIDATION.md`. The separate repository-bootstrap reproduction is recorded in `docs/REPOSITORY_BOOTSTRAP_VALIDATION.md`.
 
 ## Stage 10: cartridge save-memory support
 
@@ -11,22 +11,46 @@ Stage 10 adds mapper `$FFFC` SRAM enable/bank selection, 8/16/32 KiB raw
 save-file compatibility, optional `--sram-file`, and a save-image parity check.
 The original game initializes backup SRAM correctly and native/interpreter
 images match through the extended 14,500-frame town replay.
-**An actual saved-game slot and CONTINUE restoration are not yet validated.**
+**Stage 11 now verifies actual SAVE and CONTINUE slot operations;** this Stage 10 paragraph documents the earlier hardware-only milestone.
 See [`docs/STAGE10_VALIDATION.md`](docs/STAGE10_VALIDATION.md).
+
+## Stage 11: in-game SAVE and CONTINUE
+
+Stage 11 closes two native control-flow gaps: interpreter fallback return
+tracking when the game deliberately unwinds extra stack frames, and generated
+C falling off an SMS slot boundary (`$3FFF` to `$4002`). The fixes live in
+`patches/stage11-control-flow.patch` and are applied to the source generator
+and runtime; generated game code is **never** edited or committed.
+
+Full two-process in-game SAVE/CONTINUE tests now pass for **slots 1 and 2**.
+Both native execution and the bundled interpreter write identical cartridge
+save files, then restart, select CONTINUE and restore 1,023 unchanged bytes of
+the game's 1 KiB save-state payload. A third replay verifies that CONTINUE
+against an *empty slot* does not restore gameplay. See
+[`docs/STAGE11_VALIDATION.md`](docs/STAGE11_VALIDATION.md).
+
+```bash
+python3 tools/run_save_roundtrip.py --rom '/path/English Rev3.sms' --slot 1 --out runs/slot1
+python3 tools/run_save_roundtrip.py --rom '/path/English Rev3.sms' --slot 2 --out runs/slot2
+```
+
+This verifies the named character save and reload for two exercised slots.
+Overwrite/delete, the other three slots, combat, independent Mesen parity,
+and exact PSG timestamp/audio-sample accuracy remain open.
 
 ## Repository contents
 
 - `game.toml` — English Rev. 3 mapper, game RAM layout, and four ROM-checked control-flow tables.
 - `tools/bootstrap_engine.py` — fail-closed assembly of the upstream Z80 recompiler and core dependency from source ZIPs.
-- `patches/stage9-runtime-and-generator.patch` and `patches/stage10-sram.patch` — Stage 7–10 fixes to the *upstream* toolchain, including mapper-safe dispatch, fallback return handling, tracing and replay input parsing.
+- `patches/stage9-runtime-and-generator.patch`, `patches/stage10-sram.patch`, and `patches/stage11-control-flow.patch` — Stage 7–10 fixes to the *upstream* toolchain, including mapper-safe dispatch, fallback return handling, tracing and replay input parsing.
 - `regenerate.sh`, `build.sh`, `run.sh` — exact original-ROM guarded generation, compilation and execution.
-- `tools/run_scenario.py` — original ROM versus same-runtime interpreter paired gameplay replays.
+- `tools/run_scenario.py` and `tools/run_save_roundtrip.py` — gameplay replays, actual save and fresh-process continuation.
 - `tests/` — source-only repository consistency checks, runnable in CI without ROM data.
 - `docs/` — preserved Stage 9 accuracy results and limitations.
 
 **Important:** No commercial ROM, ROM-derived auto-generated C, native executable, third-party engine source, or commercial game screenshots are tracked in this Git repository. The engine and game-generated code are recreated locally.
 
-## Reproduce Stage 9 (Linux)
+## Reproduce Stage 11 (Linux)
 
 Requirements: Python 3.11+, GCC, CMake, `git` (for `git apply`), and your legitimate English Rev. 3 ROM. The exact ROM SHA-256 is `9e324e92bd833b45126861b6f1d2dcbb51251bdf3df6d563ab3a3ff784d8cf88`.
 
@@ -55,16 +79,10 @@ to the native runner command. Its file is never committed to Git.
 
 For a quick 600-frame replay, use `--scenario intro600`. The project's code-generation target is *reproducible* rather than hand-written C; do not commit generated output.
 
-## GitHub remote (private recommended)
-
-This archive is an initialized Git repository, with commits on `main`. If GitHub creation is not available from the current connector, create an empty **private** repository named `Phantasy-Star-Decomp` on GitHub (do not initialize it with README or license) and run:
-
-```bash
-git remote add origin https://github.com/YOUR-ACCOUNT/Phantasy-Star-Decomp.git
-git push -u origin main
-```
-
-The whole history can also be reconstructed from the separately distributed `.bundle` file via `git clone Phantasy-Star-Decomp.bundle Phantasy-Star-Decomp`.
+The source-only repository is published at
+[Hyperbog/Phantasy-Star-Decomp](https://github.com/Hyperbog/Phantasy-Star-Decomp).
+Keep ROM files, generated C, private save files, screenshots, traces and
+binaries out of the public repository; `.gitignore` excludes them.
 
 ## Licensing and accuracy
 

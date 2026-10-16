@@ -103,6 +103,19 @@ def build(engine_zip: Path, core_zip: Path, destination: Path = ROOT/'engine') -
         for rel, values in sram_manifest.items():
             if sha256(engine/rel)!=values['stage10_sha256']:
                 raise ValueError('Stage 10 source checksum mismatch: '+rel)
+        # Stage 11 fixes two general control-flow defects uncovered by an
+        # actual in-game SAVE/CONTINUE replay. Reject unexpected parent bytes
+        # and assert every post-patch source hash before building.
+        flow_manifest=json.loads((ROOT/'patches/stage11_patched_hashes.json').read_text())
+        for rel, values in flow_manifest.items():
+            if sha256(engine/rel)!=values['stage10_sha256']:
+                raise ValueError('Stage 11 parent source mismatch: '+rel)
+        patch11=ROOT/'patches/stage11-control-flow.patch'
+        for check in (['git','apply','--check',str(patch11)],['git','apply',str(patch11)]):
+            subprocess.run(check,cwd=engine,check=True,capture_output=True,text=True)
+        for rel, values in flow_manifest.items():
+            if sha256(engine/rel)!=values['stage11_sha256']:
+                raise ValueError('Stage 11 source checksum mismatch: '+rel)
         ext=engine/'external/z80-recomp-core'
         ext.mkdir(parents=True,exist_ok=True)
         for p in core.iterdir():

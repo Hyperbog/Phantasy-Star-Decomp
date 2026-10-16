@@ -1,0 +1,39 @@
+--- a/recompiler/src/code_generator.c
++++ b/recompiler/src/code_generator.c
+@@ -764,6 +764,20 @@
+         } else {
+             emit_cf(o,in,a);
+         }
++        /* A Z80 instruction can straddle a 16 KiB SMS slot boundary.
++         * The tracer correctly stops at that boundary because the next slot
++         * has its own live mapper state, but generated C MUST NOT simply
++         * fall out of the function. Continue at the next CPU address through
++         * the live bank-aware dispatch (or interpreter fallback).
++         *
++         * Phantasy Star name-entry: LD ($C786),HL starts at $3FFF (length 3),
++         * so the next executed opcode is $4002 in slot 1. */
++        uint16_t next_pc=(uint16_t)(a + in->length);
++        if (!in->is_halt && z80_cf_falls_through(in->cf) &&
++            (a >> 14) != (next_pc >> 14)){
++            fprintf(o,"    /* cross-slot fall-through %04X -> %04X */\n"
++                      "    call_by_address(0x%04X); return;\n",a,next_pc,next_pc);
++        }
+     }
+     fprintf(o,"}\n\n");
+     G_BS = NULL;
+--- a/runner/glue.c
++++ b/runner/glue.c
+@@ -984,7 +984,12 @@
+              * real Z80 stack has reached the entry return address. Returning
+              * here prevents the hybrid interpreter from also executing the
+              * native caller's ISR epilogue and popping its saved stack frame. */
+-            if (sp0 == entry_sp) break;
++            /* Game routines may explicitly POP one or more native return
++             * frames before RET (Phantasy Star SAVE -> name entry). A RET
++             * reached with SP already ABOVE our entry return slot has also
++             * returned out of this hybrid call, regardless of synthetic CALL
++             * depth. The comparison is signed for 16-bit SP wrap safety. */
++            if ((int16_t)(sp0 - entry_sp) >= 0) break;
+             if (depth > 0) depth--;
+             else if (g_hz.sp > entry_sp) break;           /* tail-jumped ISR */
+             /* else: push;jp(hl) continuation return -> keep interpreting */
