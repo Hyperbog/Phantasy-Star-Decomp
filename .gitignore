@@ -1,0 +1,40 @@
+# Proprietary ROMs, derivatives, native binaries, and test evidence.
+*.sms
+*.gg
+*.nes
+*.rom
+*.bin
+*.sav
+*.srm
+*.nsf
+*.wav
+*.png
+*.psg
+*.ram
+*.cram
+*.vram
+*.regs
+*.cpu
+*.csv
+*.log
+*.so
+*.dll
+*.exe
+*.o
+*.a
+*.obj
+# ROM-derived auto-generated source; only generated locally, never commit.
+/generated/
+# Large third-party source: initialized by tools/bootstrap_engine.py; not vendored.
+/engine/
+/bin/
+/runs/
+/evidence/
+/evidence_stage9/
+/dispatch_manifest.txt
+# Standard intermediates.
+__pycache__/
+.pytest_cache/
+*.py[cod]
+/build/
+*.zip
