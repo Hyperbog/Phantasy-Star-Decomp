@@ -83,6 +83,8 @@ def main():
     ap.add_argument('--rom',required=True,type=Path)
     ap.add_argument('--scenario',choices=tuple(scenarios()),required=True)
     ap.add_argument('--out',type=Path,default=ROOT/'runs')
+    ap.add_argument('--with-sram',action='store_true',
+                    help='start with erased cartridge SRAM in both modes and compare persisted images')
     args = ap.parse_args()
     rom = args.rom.resolve()
     if not rom.is_file() or hashlib.sha256(rom.read_bytes()).hexdigest() != SHA256:
@@ -92,16 +94,36 @@ def main():
     frames, presses=scenarios()[args.scenario]
     out=(args.out/args.scenario).resolve()
     out.mkdir(parents=True,exist_ok=True)
+    if args.with_sram:
+        for mode in ('native','interpreter'):
+            if (out/f'{mode}.sav').exists():
+                ap.error(f'refusing to overwrite existing {mode} SRAM; select a fresh --out directory')
     base=[str(exe),str(rom),'--frames',str(frames)]
     for frame, keys in presses: base.extend(('--press',f'{frame}:{keys}'))
     for mode in ('native','interpreter'):
-        argv=base + (['--interp'] if mode=='interpreter' else []) + [
+        argv=base + (['--interp'] if mode=='interpreter' else []) + (
+            ['--sram-file',str(out/f'{mode}.sav')] if args.with_sram else []) + [
             '--vdp-trace',str(out/f'{mode}.csv'), '--dump-frame',str(frames),
             '--dump-out',str(out/f'{mode}.png'),
             '--psg-log',str(out/f'{mode}.psg.csv')]
         with (out/f'{mode}.stderr.txt').open('w') as err:
             subprocess.run(argv,check=True,stderr=err,stdout=subprocess.DEVNULL,cwd=out)
     report=compare(out,frames)
+    if args.with_sram:
+        n=(out/'native.sav'); i=(out/'interpreter.sav')
+        if not n.is_file() or not i.is_file():
+            report['errors'].append('expected cartridge SRAM image not written')
+        else:
+            nb=n.read_bytes(); ib=i.read_bytes()
+            if nb != ib: report['errors'].append('native/interpreter cartridge SRAM differs')
+            if len(nb)!=0x8000 or len(ib)!=0x8000:
+                report['errors'].append('unexpected SRAM image size')
+            if not nb.startswith(b'PHANTASY STAR'):
+                report['errors'].append('Phantasy Star backup RAM header missing')
+            report['sram']={'size_native':len(nb), 'size_reference':len(ib),
+                            'identical':nb==ib, 'game_backup_header':nb.startswith(b'PHANTASY STAR'),
+                            'non_erased_bytes':sum(b!=0xff for b in nb)}
+        report['ok'] = not report['errors']
     (out/'result.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({'scenario':args.scenario,**report},indent=2))
     return 0 if report['ok'] else 1

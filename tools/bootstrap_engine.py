@@ -91,6 +91,18 @@ def build(engine_zip: Path, core_zip: Path, destination: Path = ROOT/'engine') -
         for rel,values in manifest.items():
             if sha256(engine/rel)!=values['patched_sha256']:
                 raise ValueError('patched source checksum mismatch: '+rel)
+        # Stage 10 extends the audited Stage 9 runtime only after checking the
+        # exact Stage 9 parent-byte hashes. This prevents patch drift.
+        sram_manifest=json.loads((ROOT/'patches/stage10_patched_hashes.json').read_text())
+        for rel, values in sram_manifest.items():
+            if sha256(engine/rel)!=values['stage9_sha256']:
+                raise ValueError('Stage 10 parent source mismatch: '+rel)
+        patch10=ROOT/'patches/stage10-sram.patch'
+        for check in (['git','apply','--check',str(patch10)],['git','apply',str(patch10)]):
+            subprocess.run(check,cwd=engine,check=True,capture_output=True,text=True)
+        for rel, values in sram_manifest.items():
+            if sha256(engine/rel)!=values['stage10_sha256']:
+                raise ValueError('Stage 10 source checksum mismatch: '+rel)
         ext=engine/'external/z80-recomp-core'
         ext.mkdir(parents=True,exist_ok=True)
         for p in core.iterdir():

@@ -1,0 +1,14 @@
+{
+  "runner/glue.c": {
+    "stage9_sha256": "a7ab24209a32421059f178c5ba4fabc0f3d12503c582772eac120a98ad066ab2",
+    "stage10_sha256": "bc82dc780ae2aadb55cebae3ead0ac78fd152c3c874e4c3d25807576ff624688"
+  },
+  "runner/glue.h": {
+    "stage9_sha256": "4f981349461d64029101ab6a789f675b2465aedb70a95bc518aab8adf1726e7e",
+    "stage10_sha256": "2b3370c8d1fad8112b1b6d22c05235bcb8a1d830ee3fd30407df2c60773e11c1"
+  },
+  "runner/main.c": {
+    "stage9_sha256": "869252d844289c7ca11402536c05b0991a70a2db9a66ac9198b1cdb9febaa5d1",
+    "stage10_sha256": "2dfe3a67f7bafff0634f372350172dcd5861e8bb7b80c8daa1458a037d6dae36"
+  }
+}

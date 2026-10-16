@@ -1,5 +1,5 @@
-# EXPERIMENTAL UNEXECUTED INPUT for mstan/smsggrecomp (Sonic sample schema).
-# Verified against the exact English Rev.3 ROM locally; NOT accepted by SmsRecomp yet.
+# ROM-VALIDATED AND EXECUTED INPUT for mstan/smsggrecomp (Sonic sample schema).
+# Verified against the exact English Rev.3 ROM locally; Accepted by the tested SmsRecomp generator.
 # Copy the user's licensed ROM to the project working directory as:
 # phantasy_star_en_rev3.sms (NOT committed).
 [game]
@@ -20,7 +20,7 @@ kind = "sega"
 extra = []
 blacklist = []
 
-# Four ROM-verified LE pointer tables; full engine execution NOT yet tested.
+# Four ROM-verified LE pointer tables; runtime executable and parity tested through Stage 10.
 # BANK=-1 is REQUIRED for the two fixed-ROM tables. main_sms.c reads tables
 # using slot default and passes target bank=-1 to bankstate_init, preserving
 # slot0=bank0 and slot1=bank1. bank=0 would decode three game modes in bank0

@@ -1,0 +1,208 @@
+--- a/runner/glue.c
++++ b/runner/glue.c
+@@ -25,6 +25,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <setjmp.h>
++#include <errno.h>
+ 
+ /* ---- CPU + memory ---- */
+ Z80State  g_z80;
+@@ -36,6 +37,81 @@
+ static uint8_t   g_ram[0x2000];     /* 8 KB system RAM ($C000-$DFFF) */
+ static int       g_bank[3] = {0,1,2};
+ static bool      g_mapper_cm;        /* Codemasters mapper */
++static uint8_t   g_sram[0x8000];    /* optional Sega cartridge SRAM, up to 32 KiB */
++static size_t    g_sram_size = sizeof g_sram;
++static uint8_t   g_mapper_ctl;      /* mirror of $FFFC: $08=SRAM slot 2, $04=SRAM bank */
++static char     *g_sram_path;       /* opt-in persistence; NULL means volatile */
++static bool      g_sram_dirty;
++
++/* The default 32 KiB image covers both mapper-selectable 16 KiB halves.
++ * Existing 8 KiB and 16 KiB battery images are accepted and mirrored at
++ * their physical address-width boundary; saving preserves that file size.
++ * No file is created unless --sram-file is explicitly requested. */
++static size_t sram_index(uint32_t address){
++    return (size_t)(address % g_sram_size);
++}
++
++bool glue_load_sram(const char *path){
++    if (!path || !*path || g_sram_path){
++        fprintf(stderr,"[sram] invalid or duplicate save-file path\n");
++        return false;
++    }
++    size_t n=strlen(path);
++    if (n > 4096){ fprintf(stderr,"[sram] file path too long\n"); return false; }
++    char *owned=(char*)malloc(n+1);
++    if (!owned) return false;
++    memcpy(owned,path,n+1);
++    FILE *f=fopen(path,"rb");
++    if (f){
++        if (fseek(f,0,SEEK_END)!=0){ fclose(f); free(owned); return false; }
++        long len=ftell(f);
++        if (len!=0x2000 && len!=0x4000 && len!=0x8000){
++            fprintf(stderr,"[sram] unsupported file size %ld (expected 8192/16384/32768)\n",len);
++            fclose(f); free(owned); return false;
++        }
++        rewind(f);
++        if (fread(g_sram,1,(size_t)len,f)!=(size_t)len || ferror(f)){
++            fprintf(stderr,"[sram] cannot read cartridge SRAM image\n");
++            fclose(f); free(owned); return false;
++        }
++        fclose(f);
++        g_sram_size=(size_t)len;
++    } else {
++        if (errno!=ENOENT){
++            fprintf(stderr,"[sram] cannot open existing save-file: %s\n",path);
++            free(owned); return false;
++        }
++        memset(g_sram,0xFF,sizeof g_sram);
++        g_sram_size=sizeof g_sram;
++    }
++    g_sram_dirty=false;
++    g_sram_path=owned;
++    return true;
++}
++
++bool glue_flush_sram(void){
++    if (!g_sram_path || !g_sram_dirty) return true;
++    size_t n=strlen(g_sram_path);
++    char *tmp=(char*)malloc(n+5);
++    if (!tmp) return false;
++    memcpy(tmp,g_sram_path,n);
++    memcpy(tmp+n,".tmp",5);
++    FILE *f=fopen(tmp,"wb");
++    bool ok=false;
++    if (f){
++        ok=(fwrite(g_sram,1,g_sram_size,f)==g_sram_size);
++        if (fflush(f)!=0) ok=false;
++        if (fclose(f)!=0) ok=false;
++    }
++    if (ok) ok=(rename(tmp,g_sram_path)==0);
++    if (!ok){
++        fprintf(stderr,"[sram] unable to persist cartridge SRAM to %s\n",g_sram_path);
++        remove(tmp);
++    } else g_sram_dirty=false;
++    free(tmp);
++    return ok;
++}
++
+ 
+ /* ---- timing ---- */
+ static uint64_t  g_next_line_cyc;
+@@ -358,7 +434,16 @@
+     if (a < 0x0400) return rom_byte(0, a);              /* fixed first 1 KB */
+     if (a < 0x4000) return rom_byte(g_bank[0], a);
+     if (a < 0x8000) return rom_byte(g_bank[1], (uint32_t)a - 0x4000);
+-    if (a < 0xC000) return rom_byte(g_bank[2], (uint32_t)a - 0x8000);
++    if (a < 0xC000){
++        if (!g_mapper_cm && (g_mapper_ctl & 0x08))
++            return g_sram[sram_index(((g_mapper_ctl & 0x04) ? 0x4000u : 0u) + a - 0x8000u)];
++        return rom_byte(g_bank[2], (uint32_t)a - 0x8000);
++    }
++    if (!g_mapper_cm && (g_mapper_ctl & 0x10)){
++        /* The nonstandard system-RAM overlay exposes the opposite 16 KiB half. */
++        uint32_t half=(g_mapper_ctl & 0x04) ? 0u : 0x4000u;
++        return g_sram[sram_index(half + a - 0xC000u)];
++    }
+     return g_ram[(a - 0xC000) & 0x1FFF];
+ }
+ 
+@@ -382,11 +467,20 @@
+         }
+     }
+ #endif
++    if (a >= 0x8000 && a < 0xC000 && !g_mapper_cm && (g_mapper_ctl & 0x08)){
++        g_sram[sram_index(((g_mapper_ctl & 0x04) ? 0x4000u : 0u) + a - 0x8000u)] = v;
++        g_sram_dirty=true;
++        return;
++    }
+     if (a >= 0xC000){
+-        g_ram[(a - 0xC000) & 0x1FFF] = v;
++        if (!g_mapper_cm && (g_mapper_ctl & 0x10)){
++            uint32_t half=(g_mapper_ctl & 0x04) ? 0u : 0x4000u;
++            g_sram[sram_index(half + a - 0xC000u)] = v;
++            g_sram_dirty=true;
++        } else g_ram[(a - 0xC000) & 0x1FFF] = v;
+         if (a >= 0xFFFC){                                /* Sega frame regs */
+             switch (a){
+-                case 0xFFFC: break;                      /* RAM/mapper control */
++                case 0xFFFC: g_mapper_ctl = v; break;     /* SRAM and bank control */
+                 case 0xFFFD: g_bank[0] = v; break;
+                 case 0xFFFE: g_bank[1] = v; break;
+                 case 0xFFFF: g_bank[2] = v; break;
+@@ -403,7 +497,10 @@
+ }
+ 
+ int sms_slot_bank(uint16_t addr){
+-    return (addr < 0xC000) ? g_bank[addr >> 14] : -1;
++    if (addr >= 0xC000) return -1;
++    if (addr >= 0x8000 && !g_mapper_cm && (g_mapper_ctl & 0x08)) return -1;
++    if (addr < 0x0400) return 0;
++    return g_bank[addr >> 14];
+ }
+ 
+ uint8_t sms_io_in(uint8_t p){
+@@ -1164,6 +1261,9 @@
+ void glue_init(bool is_gg, uint64_t frame_limit){
+     memset(&g_z80, 0, sizeof(g_z80));
+     memset(g_ram, 0, sizeof(g_ram));
++    if (!g_sram_path){ memset(g_sram,0xFF,sizeof g_sram); g_sram_size=sizeof g_sram; }
++    g_mapper_ctl=0;
++    g_sram_dirty=false;
+     g_bank[0]=0; g_bank[1]=1; g_bank[2]=2;
+     g_z80.sp = 0xDFF0;
+     g_z80.cyc = 0;
+--- a/runner/glue.h
++++ b/runner/glue.h
+@@ -10,6 +10,11 @@
+ 
+ /* Load a .sms/.gg image into the runner's ROM space. Returns false on error. */
+ bool     glue_load_rom(const char *path);
++/* Opt-in SRAM persistence. Load BEFORE glue_init; accepts existing 8/16/32 KiB
++ * raw images, or initializes erased 32 KiB when the file does not yet exist.
++ * Mapping still works without persistence. Flush after glue_run*() returns. */
++bool     glue_load_sram(const char *path);
++bool     glue_flush_sram(void);
+ 
+ /* Initialise bus/VDP/CPU for a fresh run. frame_limit==0 means run forever. */
+ void     glue_init(bool is_gg, uint64_t frame_limit);
+--- a/runner/main.c
++++ b/runner/main.c
+@@ -171,6 +171,7 @@
+     bool interp = false;       /* oracle: run the reference superzazu interpreter */
+     const char *audio_wav = NULL;   /* dump PSG output to this WAV */
+     bool mute = false;              /* suppress live SDL audio (window build) */
++    const char *sram_file = NULL;     /* optional battery-backed cartridge RAM */
+     bool check_input = false;       /* validate scripted input without a ROM */
+ #ifdef SMS_CYC_WATCH
+     const char *cyc_watch_file = NULL; uint16_t cyc_watch_addr = 0;
+@@ -186,6 +187,12 @@
+         else if (strcmp(argv[i],"--vdp-trace")==0 && i+1<argc) vdp_trace = argv[++i];
+         else if (strcmp(argv[i],"--psg-log")==0 && i+1<argc) psg_log = argv[++i];
+         else if (strcmp(argv[i],"--force-display")==0){ extern int g_vdp_force_display; g_vdp_force_display=1; }
++        else if (strcmp(argv[i],"--sram-file")==0){
++            if (sram_file || i+1>=argc){
++                fprintf(stderr,"[runner] --sram-file requires exactly one path\n"); return 2;
++            }
++            sram_file=argv[++i];
++        }
+         else if (strcmp(argv[i],"--interp")==0) interp = true;
+         else if (strcmp(argv[i],"--audio-wav")==0 && i+1<argc) audio_wav = argv[++i];
+         else if (strcmp(argv[i],"--mute")==0) mute = true;
+@@ -229,6 +236,7 @@
+             rom, (unsigned long long)glue_rom_size(), is_gg?"GG":"SMS",
+             frames ? "to frame limit" : "until window close");
+ 
++    if (sram_file && !glue_load_sram(sram_file)) return 2;
+     glue_init(is_gg, frames);
+     if (dump_out) glue_set_dump(dump_frame ? dump_frame : frames, dump_out);
+     if (vdp_trace) glue_set_vdp_trace(vdp_trace);
+@@ -290,6 +298,7 @@
+     if (want_window) host_shutdown();
+ #endif
+     wav_close();
++    if (!glue_flush_sram()) return 3;
+     if (psg_log) glue_psg_log_close();
+ #ifdef SMS_CYC_WATCH
+     if (cyc_watch_file) glue_cyc_watch_close();

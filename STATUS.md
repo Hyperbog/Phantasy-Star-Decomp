@@ -1,10 +1,10 @@
-# Current checkpoint — Stage 9
+# Current checkpoint — Stage 10: cartridge SRAM
 
-- Source-only game-specific Git repository prepared from validated Stage 9 package.
-- ROM: English Rev.3 512 KiB SHA256 `9e324e92bd833b45126861b6f1d2dcbb51251bdf3df6d563ab3a3ff784d8cf88`.
-- User-provided engine ZIP + Z80 core ZIP are required for local regeneration; both are excluded from history.
-- Native-recompiled execution previously tested to frame 14,500 with paired same-runtime interpreter; 31/31 Stage 9 release tests reported passed. These are **previous private-package results**, not CI of the trimmed source-only repo.
-- Good: title, intro, home/dialogue, city map, tracked-mode parity, final video and RAM matching, PSG command-value matching.
-- Pending: exact PSG timestamps/PCM, transient VRAM discrepancies, independent emulator comparison, battle and save paths, reduction of remaining hybrid fallback, graphical Windows build.
-- Do not interpret static function count or native-cycle coverage as proportion of whole game semantics complete.
-- Current version-control state: private-ready source-only repository, initial commits on `main`. A GitHub remote needs to be created and associated separately.
+- Public source-only repository: `https://github.com/Hyperbog/Phantasy-Star-Decomp`, branch `main`.
+- Target ROM: English Rev. 3, 512 KiB, SHA-256 `9e324e92bd833b45126861b6f1d2dcbb51251bdf3df6d563ab3a3ff784d8cf88`.
+- Stage 10 adds opt-in cartridge SRAM persistence, physical mapper bank switching, verified 8/16/32 KiB file handling, hardware-level C tests, and RAM-image parity in paired gameplay replays.
+- 600-, 9,700-, and 14,500-frame native and same-runtime interpreter paths with SRAM enabled passed. Both modes produced identical initialized backup-RAM images; the game backup header is present.
+- Native execution still contains interpreter fallback; no generated ROM-equivalent code is tracked.
+- Pending: **in-game SAVE/CONTINUE slot operations**, battle coverage, PSG per-write timing/PCM parity, transient VRAM/RAM/cycle discrepancies, independent emulator comparison, Windows release.
+- Do not interpret exact end-frame parity, generated function counts, or native-cycle share as verified whole-game completion.
+- Validation and source-only reproducibility: `docs/STAGE10_VALIDATION.md` and `docs/STAGE9_VALIDATION.md`.
