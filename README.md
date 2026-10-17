@@ -1,5 +1,7 @@
 # Phantasy Star — Native SMS Recompilation
 
+**Repository organization:** This root directory retains the original-game Z80 recompilation and validation workflow. The separate [modern/](modern/README.md) directory contains the new C++20 modernization engine, its own build and tests. These are independent workstreams.
+
 **Project:** *Phantasy Star*, Sega Master System, English Rev. 3, 1987. Game-specific repo for ROM-driven Z80 → C static recompilation, a mapper-aware hybrid interpreter fallback, and automated native/interpreter parity testing. **Current checkpoint: Stage 12 (SAVE/CONTINUE-backed dungeon exploration).**
 
 **Status:** A native Linux headless runner previously compiled from the original ROM. The Stage 9 private build reached 14,500 scripted frames, including title, introduction, Alis's home/dialogue, and overhead town. Native and bundled-interpreter runs had byte-identical final RAM, VRAM, CRAM, VDP registers, and frame PNG; 52,395 PSG writes matched by value in order. **Not a verified playable alpha**: per-write PSG timing and PCM waveforms differ; some intermediate memory snapshots disagree; no independent emulator parity; battles untested and SAVE/CONTINUE validated only for slots 1 and 2. See `docs/STAGE9_VALIDATION.md`. The separate repository-bootstrap reproduction is recorded in `docs/REPOSITORY_BOOTSTRAP_VALIDATION.md`.
