@@ -1,0 +1,7 @@
+PSEVENT 1
+id=training_gate
+requires_flag=found_cache
+repeatable=0
+action_count=2
+action=grant_experience:training_hero:10
+action=set_flag:cleared_room:1

@@ -1,0 +1,9 @@
+PSITEM 1
+id=training_tonic
+name=Training Tonic
+kind=consumable
+max_stack=9
+healing=8
+attack_bonus=0
+defense_bonus=0
+speed_bonus=0

@@ -47,3 +47,22 @@ behavior. They provide clean interfaces for future reconstructed classic rules.
 
 See [the content schema](docs/CONTENT_FORMAT.md) for mod authoring and its
 validation constraints.
+
+## Inventory, equipment, and event/quest foundation
+
+`modernps_core` now includes `ItemCatalog`, `Inventory`, `Loadout`,
+`EventEngine`, `QuestJournal` and `WorldInteractions`. Inventories enforce
+per-item stack counts and a distinct-item slot limit. Equipment bonuses are
+read by the combat-domain model. Consumables restore lost HP. A story action
+may set a flag, grant an item, or grant XP; an invalid later action cannot
+partially commit an earlier reward. World events require player interaction
+on a specifically bound walkable tile. Quests are projections of story flags.
+
+Additional strict `PSITEM 1`, `PSEVENT 1`, and `PSQUEST 1` content files
+include a complete **original training** sample. The sample integration test
+covers content -> map -> event -> inventory -> equipment -> combat -> healing
+-> quest completion -> character progression. This is a testable logic
+foundation, not a GUI, a runnable RPG, or an authentic original-game ruleset.
+
+See [the content schema](docs/CONTENT_FORMAT.md) for supported authoring fields
+and [the architecture contract](docs/ARCHITECTURE.md) for scope boundaries.

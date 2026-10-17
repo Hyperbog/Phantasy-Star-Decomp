@@ -65,3 +65,32 @@ can be superseded later by a separately versioned JSON/TOML codec.
 
 The new end-to-end test uses non-copyright sample content and demonstrates
 content -> movement -> party -> battle -> progression without platform code.
+
+## Stage 3: inventory, equipment, and event/quest foundations
+
+- `items.hpp` owns versioned-content-independent `ItemDefinition`, `ItemCatalog`,
+  stack-and-slot-limited `Inventory`, three-slot `Loadout`, combat stat modifiers,
+  and healing consumables. Item IDs rather than ROM bank pointers identify game
+  objects. Failed equip/unequip operations stage an inventory copy before commit.
+- `character.hpp` now exposes bounded `heal` and `take_damage` methods. The
+  existing combat prototype **does not automatically synchronize** its private
+  `Actor` HP with the party; callers must apply a combat event's damage explicitly
+  until a future battle-controller integration is implemented.
+- `story.hpp` manages `EventEngine`, `QuestJournal`, and `WorldInteractions`.
+  Event actions include story flags, item grants and XP grants; registration
+  validates action shapes. When fired, the engine copies party, inventory and
+  progress flags, applies actions in order, and commits all results by swaps.
+  Unknown targets, unavailable inventory room or XP cap errors roll back all
+  actions. One-shot flags prevent double rewards; repeatable events remain
+  bounded by inventory/stat constraints.
+- `content.cpp` adds `PSITEM 1`, `PSEVENT 1`, and `PSQUEST 1`. The same strict
+  parser rejects unsupported schemas, invalid identifiers, bad numeric fields,
+  unknown action types, incomplete documents and trailing input.
+- `gameplay_flow_tests.cpp` demonstrates **illustrative** content file loading,
+  moving to a cache, acquiring/equipping a weapon, completing a battle,
+  consuming a healing item and advancing a quest/XP reward. It is not a full
+  game loop or an original-ROM parity test.
+
+All rules and sample assets in this stage are new modern-engine examples, not
+verified or copied from the original Sega game. The original recompilation
+lives at the repository root and is unchanged by this workstream.
