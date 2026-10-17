@@ -34,6 +34,7 @@ public:
     const Stats& stats() const noexcept { return stats_; }
     int hp() const noexcept { return hp_; }
     int grant_experience(int amount);
+    void restore_progress(int experience, int hp);
     int heal(int amount);
     int take_damage(int amount);
     Actor as_combat_actor() const;

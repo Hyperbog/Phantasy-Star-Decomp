@@ -35,6 +35,10 @@ public:
     bool contains(std::string_view id) const noexcept;
     bool has_flag(std::string_view flag) const noexcept;
     bool completed(std::string_view id) const noexcept;
+    const std::set<std::string, std::less<>>& flags() const noexcept { return flags_; }
+    const std::set<std::string, std::less<>>& completed_events() const noexcept { return completed_; }
+    void restore_progress(const std::set<std::string, std::less<>>& flags,
+                          const std::set<std::string, std::less<>>& completed);
     EventResult interact(std::string_view id, Party& party, Inventory& inventory,
                          const ItemCatalog& catalog);
 private:

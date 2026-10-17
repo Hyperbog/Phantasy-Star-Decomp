@@ -94,3 +94,28 @@ content -> movement -> party -> battle -> progression without platform code.
 All rules and sample assets in this stage are new modern-engine examples, not
 verified or copied from the original Sega game. The original recompilation
 lives at the repository root and is unchanged by this workstream.
+
+## Stage 4: merchant, NPC and persistence boundaries
+
+`Wallet` holds nonnegative currency capped at 1,000,000,000. A `Shop` validates
+all `ShopOffer` item IDs against an `ItemCatalog` at construction. Each trade
+stages inventory and wallet copies and commits both only after all checks
+succeed. Negative quantities, unaffordable purchases, full inventories,
+oversized price totals, excess proceeds, missing stock and key-item offers
+are rejected. Shops currently have unlimited stock; equipped items live outside
+inventory and cannot be sold without unequipping.
+
+`DialogueEngine` selects a mandatory fallback dialogue line when no conditional
+story flag matches. Later eligible lines override earlier eligible lines. NPC
+locations are explicitly bound to walkable tiles and queried through
+`talk_here`. Story flag values remain owned exclusively by `EventEngine`.
+
+`GameState` joins world, party, inventory, per-member equipment, story state
+and wallet in a runtime-owned aggregate. `encode_save` emits a deterministic
+`PSAVE 1` text snapshot with a CRC32 checksum; `decode_save` validates the
+whole document before returning a new state. It rejects mismatched character
+rosters/map IDs/inventory capacities and unknown original content references.
+The caller must reconstruct an identical content blueprint (map, party member
+identities/definitions, event definitions) on the next run. Definition assets,
+NPCs, shops, quest definitions, combat history and encounter RNG are *not*
+serialized. See `PERSISTENCE.md` for constraints and upgrade strategy.

@@ -144,3 +144,47 @@ completion_flag=cleared_room
 This is an intentionally small, strictly versioned native content foundation,
 not original *Phantasy Star* game data. Unknown versions and extra fields are
 rejected rather than silently ignored.
+
+## NPC: `PSNPC 1`
+
+Example `content/training_merchant.psnpc`:
+
+    PSNPC 1
+    id=training_merchant
+    name=Training Merchant
+    lines=2
+    line=-|Welcome to the training shop.
+    line=cleared_room|Your training is complete. Visit again!
+
+`lines`: 1..16. Each line is `line=required_flag|text`; `-` is the required
+fallback line's flag and **must be first**. Additional lines require valid
+content flag IDs. Text length 1..160 bytes and no ASCII control characters,
+commas are permitted but `|` only separates the condition and text. On
+several matching flags, the last matching line wins. Strings have not yet
+been certified as Unicode-normalized. No NPC art, voice or ROM dialogue is
+bundled.
+
+## Shop: `PSSHOP 1`
+
+Example `content/training_shop.psshop`:
+
+    PSSHOP 1
+    id=training_shop
+    offers=2
+    offer=training_tonic,12,6
+    offer=training_blade,40,20
+
+`offers`: 1..32 unique item IDs present in the loaded item catalog. Each offer
+has an integer `buy_price` (1..1,000,000,000) and `sell_price` (0..buy_price).
+Key items cannot be listed. Trades require sufficient inventory slots/money,
+are atomic and cannot exceed the wallet cap. These are *fictional sample
+prices*, not known original Phantasy Star economy data.
+
+## Save file: `PSAVE 1`
+
+The runtime owns `PSAVE 1`, which is intentionally distinct from authored
+content formats. It contains current mutable progress but **does not contain
+item/world/character or event definitions**; these are rebuilt by the caller
+before restoration. See `docs/PERSISTENCE.md` for its canonical wire layout,
+checksum and migration limitations. Do not hand-edit or accept saves as trusted
+scripts, and do not distribute original game assets alongside examples.

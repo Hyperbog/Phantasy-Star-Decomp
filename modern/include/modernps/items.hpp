@@ -42,6 +42,7 @@ public:
     std::size_t slots_used() const noexcept { return quantities_.size(); }
     std::size_t capacity() const noexcept { return max_slots_; }
     int count(std::string_view id) const noexcept;
+    const std::map<std::string, int, std::less<>>& entries() const noexcept { return quantities_; }
     void add(const ItemCatalog& catalog, std::string_view id, int quantity);
     void remove(std::string_view id, int quantity);
     void swap(Inventory& other) noexcept;
@@ -57,6 +58,8 @@ public:
                std::string_view id);
     void unequip(const ItemCatalog& catalog, Inventory& inventory,
                  ItemKind kind);
+    static Loadout restore(const ItemCatalog& catalog,
+        const std::array<std::optional<std::string>, 3>& slots);
     Stats effective_stats(const Character& character,
                           const ItemCatalog& catalog) const;
     Actor as_combat_actor(const Character& character,

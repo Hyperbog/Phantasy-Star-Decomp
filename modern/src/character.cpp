@@ -55,6 +55,17 @@ int Character::grant_experience(int amount) {
     return increments;
 }
 
+void Character::restore_progress(int experience, int hp) {
+    if (experience < 0 || experience > max_experience)
+        throw std::invalid_argument("invalid restored experience");
+    Character staged(definition_);
+    staged.grant_experience(experience);
+    if (hp < 0 || hp > staged.stats().max_hp)
+        throw std::invalid_argument("invalid restored HP");
+    if (hp < staged.hp()) staged.take_damage(staged.hp() - hp);
+    *this = std::move(staged);
+}
+
 int Character::heal(int amount) {
     if (amount <= 0) throw std::invalid_argument("healing must be positive");
     const int restored = std::min(amount, stats_.max_hp - hp_);
