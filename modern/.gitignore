@@ -1,0 +1,3 @@
+# Local CMake outputs. The original-game root build uses its own ignores.
+build/
+out/

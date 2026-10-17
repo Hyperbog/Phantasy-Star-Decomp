@@ -1,0 +1,21 @@
+name: Modern engine integrity
+on:
+  push:
+    paths:
+      - 'modern/**'
+      - '.github/workflows/modern-ci.yml'
+  pull_request:
+    paths:
+      - 'modern/**'
+      - '.github/workflows/modern-ci.yml'
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S modern -B modern/build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build modern/build --parallel 2
+      - name: Test
+        run: ctest --test-dir modern/build --output-on-failure
