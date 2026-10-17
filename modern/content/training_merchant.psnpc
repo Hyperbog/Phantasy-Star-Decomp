@@ -1,0 +1,6 @@
+PSNPC 1
+id=training_merchant
+name=Training Merchant
+lines=2
+line=-|Welcome to the training shop.
+line=cleared_room|Your training is complete. Visit again!

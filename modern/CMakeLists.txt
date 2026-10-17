@@ -3,7 +3,7 @@ project(ModernPhantasyStar LANGUAGES CXX)
 
 add_library(modernps_core STATIC
     src/combat.cpp src/world.cpp src/character.cpp src/content.cpp
-    src/items.cpp src/story.cpp)
+    src/items.cpp src/story.cpp src/economy.cpp src/dialogue.cpp src/save.cpp)
 target_include_directories(modernps_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_compile_features(modernps_core PUBLIC cxx_std_20)
@@ -67,4 +67,28 @@ if(BUILD_TESTING)
     target_compile_definitions(modernps_gameplay_flow_tests PRIVATE
         MODERNPS_CONTENT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/content")
     add_test(NAME modernps_gameplay_flow COMMAND modernps_gameplay_flow_tests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(modernps_economy_tests tests/economy_tests.cpp)
+    target_link_libraries(modernps_economy_tests PRIVATE modernps_core)
+    add_test(NAME modernps_economy COMMAND modernps_economy_tests)
+
+    add_executable(modernps_dialogue_tests tests/dialogue_tests.cpp)
+    target_link_libraries(modernps_dialogue_tests PRIVATE modernps_core)
+    target_compile_definitions(modernps_dialogue_tests PRIVATE
+        MODERNPS_CONTENT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/content")
+    add_test(NAME modernps_dialogue COMMAND modernps_dialogue_tests)
+
+    add_executable(modernps_save_tests tests/save_tests.cpp)
+    target_link_libraries(modernps_save_tests PRIVATE modernps_core)
+    add_test(NAME modernps_save COMMAND modernps_save_tests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(modernps_campaign_tests tests/campaign_tests.cpp)
+    target_link_libraries(modernps_campaign_tests PRIVATE modernps_core)
+    target_compile_definitions(modernps_campaign_tests PRIVATE
+        MODERNPS_CONTENT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/content")
+    add_test(NAME modernps_campaign COMMAND modernps_campaign_tests)
 endif()

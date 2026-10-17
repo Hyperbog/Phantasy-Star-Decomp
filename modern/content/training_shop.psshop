@@ -1,0 +1,5 @@
+PSSHOP 1
+id=training_shop
+offers=2
+offer=training_tonic,12,6
+offer=training_blade,40,20

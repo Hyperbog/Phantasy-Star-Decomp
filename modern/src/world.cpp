@@ -56,6 +56,14 @@ WorldState::WorldState(WorldMap map, Direction facing)
     verify_direction(facing);
 }
 
+void WorldState::restore(Position position, Direction facing) {
+    verify_direction(facing);
+    if (!map_.walkable(position))
+        throw std::invalid_argument("restored position is not walkable");
+    position_ = position;
+    facing_ = facing;
+}
+
 MoveResult WorldState::move(Direction direction) {
     verify_direction(direction);
     // Turning occurs even when a step is blocked; position does not.

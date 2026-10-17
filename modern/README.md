@@ -66,3 +66,29 @@ foundation, not a GUI, a runnable RPG, or an authentic original-game ruleset.
 
 See [the content schema](docs/CONTENT_FORMAT.md) for supported authoring fields
 and [the architecture contract](docs/ARCHITECTURE.md) for scope boundaries.
+
+## Stage 4: dialogue, shops, economy and persistence
+
+The `modernps_core` library now also provides:
+
+- `DialogueEngine`: prioritized, condition-dependent NPC lines selected from
+  quest/event flags, with optional tile bindings. Dialogue is text-only; no
+  UI renderer or cut-scene scripting is included.
+- `Shop` and `Wallet`: catalog-checked offers, buy/sell prices, capped money,
+  quantity checks and strong transaction safety when trades fail.
+- `GameState` with `PSAVE 1` persistence: ROM-free saves for map position and
+  facing, party XP/HP, inventory, equipment, wallet and story flags/completions.
+  Read restores into a **new** state; rejected saves cannot corrupt the active
+  session. Disk writing uses a same-directory temporary file and rename.
+- `PSNPC 1` and `PSSHOP 1`: strictly versioned standalone content definitions
+  for demonstration NPC dialogue and merchant offers.
+
+The new `modernps_campaign` integration test loads sample content and runs
+shopping -> map -> loot -> equipment -> combat -> healing -> quest -> NPC
+conversation -> serialization -> restored session -> trade.
+
+Read [persistence constraints](docs/PERSISTENCE.md) before relying on save
+compatibility or integrating a graphical front-end.
+
+These are **new illustrative modern-game rules**. Nothing in this directory
+claims authentic SMS item prices, NPC text or original save byte format.

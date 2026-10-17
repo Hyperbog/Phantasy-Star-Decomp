@@ -190,4 +190,55 @@ QuestDefinition load_quest_definition(std::istream& input) {
     return definition;
 }
 
+
+NpcDefinition load_npc_definition(std::istream& input) {
+    header(input, "PSNPC 1");
+    NpcDefinition npc;
+    npc.id = identifier(input);
+    npc.name = field(input, "name");
+    const int count = number(input, "lines", 1, 16);
+    for (int i = 0; i < count; ++i) {
+        auto definition = field(input, "line");
+        const auto delim = definition.find('|');
+        if (delim == std::string::npos || definition.find('|', delim+1) != std::string::npos)
+            throw std::invalid_argument("malformed NPC dialogue line");
+        auto flag = definition.substr(0, delim);
+        if (flag == "-") flag.clear();
+        npc.dialogue.push_back({flag, definition.substr(delim+1)});
+    }
+    no_trailer(input);
+    DialogueEngine checked;
+    checked.add_npc(npc);
+    return npc;
+}
+
+ShopDefinition load_shop_definition(std::istream& input, const ItemCatalog& catalog) {
+    header(input, "PSSHOP 1");
+    ShopDefinition shop;
+    shop.id = identifier(input);
+    const int count = number(input, "offers", 1, 32);
+    for (int i = 0; i < count; ++i) {
+        const auto entry = field(input, "offer");
+        const auto a = entry.find(',');
+        const auto b = entry.find(',', a == std::string::npos ? a : a+1);
+        if (a == std::string::npos || b == std::string::npos ||
+            entry.find(',', b+1) != std::string::npos)
+            throw std::invalid_argument("malformed shop offer");
+        auto parse = [](std::string_view value) {
+            int n = 0;
+            const auto [end, error] = std::from_chars(value.data(),
+                value.data()+value.size(), n);
+            if (error != std::errc{} || end != value.data()+value.size())
+                throw std::invalid_argument("invalid shop price");
+            return n;
+        };
+        shop.offers.push_back({entry.substr(0,a),
+                               parse(std::string_view(entry).substr(a+1,b-a-1)),
+                               parse(std::string_view(entry).substr(b+1))});
+    }
+    no_trailer(input);
+    Shop checked(shop, catalog);
+    return shop;
+}
+
 } // namespace modernps

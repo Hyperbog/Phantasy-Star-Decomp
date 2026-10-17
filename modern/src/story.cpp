@@ -44,6 +44,20 @@ bool EventEngine::completed(std::string_view id) const noexcept {
     return completed_.find(id) != completed_.end();
 }
 
+void EventEngine::restore_progress(
+    const std::set<std::string, std::less<>>& flags,
+    const std::set<std::string, std::less<>>& completed) {
+    for (const auto& flag : flags)
+        if (!valid_content_id(flag)) throw std::invalid_argument("invalid restored flag");
+    for (const auto& id : completed)
+        if (!contains(id)) throw std::invalid_argument("unknown completed event");
+    // Allocation happens before mutation; set::swap cannot throw.
+    auto staged_flags = flags;
+    auto staged_completed = completed;
+    flags_.swap(staged_flags);
+    completed_.swap(staged_completed);
+}
+
 EventResult EventEngine::interact(std::string_view id, Party& party,
                                   Inventory& inventory, const ItemCatalog& catalog) {
     const auto found = definitions_.find(id);

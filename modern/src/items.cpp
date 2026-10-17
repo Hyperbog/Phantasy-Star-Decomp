@@ -130,6 +130,19 @@ void Loadout::unequip(const ItemCatalog& catalog, Inventory& inventory,
     slots_[index].reset();
 }
 
+Loadout Loadout::restore(const ItemCatalog& catalog,
+                         const std::array<std::optional<std::string>, 3>& slots) {
+    Loadout loadout;
+    for (std::size_t i = 0; i < slots.size(); ++i) {
+        if (!slots[i]) continue;
+        const auto& definition = catalog.get(*slots[i]);
+        if (slot(definition.kind) != i)
+            throw std::invalid_argument("restored item in incorrect equipment slot");
+        loadout.slots_[i] = definition.id;
+    }
+    return loadout;
+}
+
 Stats Loadout::effective_stats(const Character& character,
                                const ItemCatalog& catalog) const {
     Stats result = character.stats();

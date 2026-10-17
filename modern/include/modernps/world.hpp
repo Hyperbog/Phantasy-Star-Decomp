@@ -49,6 +49,7 @@ public:
     Position position() const noexcept { return position_; }
     Direction facing() const noexcept { return facing_; }
     MoveResult move(Direction direction);
+    void restore(Position position, Direction facing);
 private:
     WorldMap map_;
     Position position_;
