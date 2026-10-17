@@ -1,0 +1,9 @@
+PSITEM 1
+id=training_blade
+name=Practice Blade
+kind=weapon
+max_stack=1
+healing=0
+attack_bonus=2
+defense_bonus=0
+speed_bonus=0

@@ -1,0 +1,8 @@
+PSEVENT 1
+id=training_cache
+requires_flag=
+repeatable=0
+action_count=3
+action=set_flag:found_cache:1
+action=give_item:training_tonic:2
+action=give_item:training_blade:1

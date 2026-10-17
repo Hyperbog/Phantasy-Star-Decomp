@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 project(ModernPhantasyStar LANGUAGES CXX)
 
 add_library(modernps_core STATIC
-    src/combat.cpp src/world.cpp src/character.cpp src/content.cpp)
+    src/combat.cpp src/world.cpp src/character.cpp src/content.cpp
+    src/items.cpp src/story.cpp)
 target_include_directories(modernps_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_compile_features(modernps_core PUBLIC cxx_std_20)
@@ -40,4 +41,30 @@ if(BUILD_TESTING)
     target_compile_definitions(modernps_integration_tests PRIVATE
         MODERNPS_CONTENT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/content")
     add_test(NAME modernps_integration COMMAND modernps_integration_tests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(modernps_items_tests tests/items_tests.cpp)
+    target_link_libraries(modernps_items_tests PRIVATE modernps_core)
+    add_test(NAME modernps_items COMMAND modernps_items_tests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(modernps_story_tests tests/story_tests.cpp)
+    target_link_libraries(modernps_story_tests PRIVATE modernps_core)
+    add_test(NAME modernps_story COMMAND modernps_story_tests)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(modernps_extended_content_tests tests/extended_content_tests.cpp)
+    target_link_libraries(modernps_extended_content_tests PRIVATE modernps_core)
+    target_compile_definitions(modernps_extended_content_tests PRIVATE
+        MODERNPS_CONTENT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/content")
+    add_test(NAME modernps_extended_content COMMAND modernps_extended_content_tests)
+
+    add_executable(modernps_gameplay_flow_tests tests/gameplay_flow_tests.cpp)
+    target_link_libraries(modernps_gameplay_flow_tests PRIVATE modernps_core)
+    target_compile_definitions(modernps_gameplay_flow_tests PRIVATE
+        MODERNPS_CONTENT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/content")
+    add_test(NAME modernps_gameplay_flow COMMAND modernps_gameplay_flow_tests)
 endif()

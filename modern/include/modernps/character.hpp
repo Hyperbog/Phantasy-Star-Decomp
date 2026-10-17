@@ -34,6 +34,8 @@ public:
     const Stats& stats() const noexcept { return stats_; }
     int hp() const noexcept { return hp_; }
     int grant_experience(int amount);
+    int heal(int amount);
+    int take_damage(int amount);
     Actor as_combat_actor() const;
 private:
     static int required_experience_for_next_level(int current_level) noexcept;
@@ -51,6 +53,7 @@ public:
     explicit Party(Character leader);
     const std::vector<Character>& members() const noexcept { return members_; }
     bool contains(std::string_view id) const noexcept;
+    void swap(Party& other) noexcept;
     void add(Character member);
     Character& member(std::string_view id);
     const Character& member(std::string_view id) const;

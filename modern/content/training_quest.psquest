@@ -1,0 +1,5 @@
+PSQUEST 1
+id=training_quest
+title=Explore the training room
+activation_flag=found_cache
+completion_flag=cleared_room

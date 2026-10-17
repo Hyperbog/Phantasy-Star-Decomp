@@ -55,12 +55,30 @@ int Character::grant_experience(int amount) {
     return increments;
 }
 
+int Character::heal(int amount) {
+    if (amount <= 0) throw std::invalid_argument("healing must be positive");
+    const int restored = std::min(amount, stats_.max_hp - hp_);
+    hp_ += restored;
+    return restored;
+}
+
+int Character::take_damage(int amount) {
+    if (amount <= 0) throw std::invalid_argument("damage must be positive");
+    const int suffered = std::min(amount, hp_);
+    hp_ -= suffered;
+    return suffered;
+}
+
 Actor Character::as_combat_actor() const {
     return {definition_.id, stats_, hp_};
 }
 
 Party::Party(Character leader) {
     members_.push_back(std::move(leader));
+}
+
+void Party::swap(Party& other) noexcept {
+    members_.swap(other.members_);
 }
 
 bool Party::contains(std::string_view id) const noexcept {
