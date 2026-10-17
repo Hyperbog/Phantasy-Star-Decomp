@@ -1,0 +1,12 @@
+PSMAP 1
+id=training_ground
+width=8
+height=6
+spawn_x=1
+spawn_y=1
+row=########
+row=#......#
+row=#.###..#
+row=#...#..#
+row=#......#
+row=########

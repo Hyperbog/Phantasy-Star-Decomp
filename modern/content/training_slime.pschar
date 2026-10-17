@@ -1,0 +1,11 @@
+PSCHAR 1
+id=training_slime
+name=Training Slime
+max_hp=11
+attack=4
+defense=1
+speed=2
+growth_hp=0
+growth_attack=0
+growth_defense=0
+growth_speed=0
