@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 from run_scenario import ROOT, SHA256, compare
@@ -25,6 +26,8 @@ DEFAULT_ROUTES = (
     'south_extension=DDDDDDDD',
 )
 ROUTE_NAME = re.compile(r'[a-z][a-z0-9_-]{0,39}\Z')
+CONTROL_ACTIONS = 'LUUUUUUU'  # Stage 12: turn left, walk seven westward tiles
+CONTROL_ENTRY_FRAME = 3120
 
 
 def parse_routes(specs):
@@ -50,14 +53,41 @@ def endpoint_frame(actions):
 
 
 def classify_transitions(transitions):
-    """Do not label an unknown mode as battle without independent evidence."""
+    """Reject invalid histories; never infer combat from a mode change."""
     baseline = list(EXPECTED_MODE_TRANSITIONS)
-    if transitions[:len(baseline)] != baseline:
+    if not isinstance(transitions, (list, tuple)) or transitions[:len(baseline)] != baseline:
         raise ValueError('the saved-game/dungeon transition prefix changed')
+    for index, entry in enumerate(transitions):
+        if not isinstance(entry, (tuple, list)) or len(entry) != 2:
+            raise ValueError('malformed transition record')
+        frame, mode = entry
+        if (type(frame) is not int or frame < 1 or not isinstance(mode, str)
+                or not re.fullmatch(r'[0-9A-F]{2}', mode)):
+            raise ValueError('invalid transition frame or mode')
+        if index and (frame <= transitions[index-1][0]
+                      or mode == transitions[index-1][1]):
+            raise ValueError('nonchronological or duplicate transition')
     extra = transitions[len(baseline):]
     return {'additional_modes':extra,
             'unclassified_mode_change':bool(extra),
             'battle_verified':False}
+
+
+def verify_corridor_progress(entry, exit_state):
+    """Two real fresh-process snapshots must demonstrate Stage 12 movement."""
+    errors = []
+    for label, state, position in (
+            ('entry', entry, 0x1E), ('exit', exit_state, 0x17)):
+        for key, expected in (
+                ('game_mode', 0x0B), ('direction', 3),
+                ('position', position), ('dungeon_index', 2)):
+            actual = state.get(key)
+            if actual != expected:
+                errors.append(
+                    f'{label}: {key} is {actual!r}, expected {expected:02X}')
+    if entry.get('position') == exit_state.get('position'):
+        errors.append('Stage 12 positive control did not change dungeon position')
+    return errors
 
 
 def copy_pair_inputs(folder, mode, frame, image):
@@ -78,6 +108,9 @@ def run(rom, out, slot=1, route_specs=DEFAULT_ROUTES, exe=None):
     if slot not in (1, 2):
         raise ValueError('only previously verified SAVE slots 1 and 2')
     routes = parse_routes(route_specs)
+    # Never allow custom routes to bypass the known-good movement control.
+    if not any(actions == CONTROL_ACTIONS for _, actions in routes):
+        routes.insert(0, ('__stage12_control', CONTROL_ACTIONS))
     exe = Path(exe).resolve() if exe else ROOT / 'bin/PhantasyStarNative'
     if not exe.is_file():
         raise FileNotFoundError(f'compiled executable absent: {exe}')
@@ -85,7 +118,8 @@ def run(rom, out, slot=1, route_specs=DEFAULT_ROUTES, exe=None):
     setup = run_roundtrip(rom, out / 'save_restore_prerequisite', slot, exe=exe)
     report = {'ok':False, 'slot':slot, 'rom_sha256':SHA256,
               'oracle':'shared-runtime interpreter, not independent emulator',
-              'battle_verified':False, 'routes':[], 'errors':[]}
+              'battle_verified':False, 'routes':[], 'errors':[],
+              'stage12_positive_control':{'verified':False}}
     errors = report['errors']
     if not setup['ok']:
         errors.extend(['SAVE/CONTINUE prerequisite failed', *setup['errors']])
@@ -101,6 +135,34 @@ def run(rom, out, slot=1, route_specs=DEFAULT_ROUTES, exe=None):
     if errors:
         (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
         return report
+
+    # Re-run the early corridor entry in both CPU modes from original save
+    # files. An equal but motionless pair cannot certify Stage 13 progress.
+    entry_folder = out / '__stage12_entry'
+    entry_folder.mkdir()
+    entry_states, entry_errors = {}, []
+    for mode in ('native', 'interpreter'):
+        save = entry_folder / f'{mode}.sav'
+        save.write_bytes(saved[mode])
+        rows, state, image = invoke(
+            exe, rom, entry_folder, mode, CONTROL_ENTRY_FRAME, save,
+            route_events(slot, CONTROL_ACTIONS))
+        entry_states[mode] = state
+        if save.read_bytes() != saved[mode]:
+            entry_errors.append(f'{mode}: entry control modified persistent SRAM')
+        if transition_log(rows) != list(EXPECTED_MODE_TRANSITIONS):
+            entry_errors.append(f'{mode}: entry control mode history changed')
+        copy_pair_inputs(entry_folder, mode, CONTROL_ENTRY_FRAME, image)
+    entry_comparison = compare(entry_folder, CONTROL_ENTRY_FRAME)
+    entry_errors.extend(f'entry control: {e}' for e in entry_comparison['errors'])
+    if entry_states['native'] != entry_states['interpreter']:
+        entry_errors.append('entry control: CPU gameplay states differ')
+    entry_memory = compare_memory(entry_folder, CONTROL_ENTRY_FRAME, entry_errors)
+    report['stage12_positive_control'] = {
+        'verified': False, 'entry_frame': CONTROL_ENTRY_FRAME,
+        'entry_states': entry_states, 'entry_parity_ok': entry_comparison['ok'],
+        'entry_memory': entry_memory}
+    errors.extend(entry_errors)
 
     for name, actions in routes:
         frame = endpoint_frame(actions)
@@ -142,6 +204,19 @@ def run(rom, out, slot=1, route_specs=DEFAULT_ROUTES, exe=None):
         errors.extend(f'{name}: {error}' for error in comparison['errors'])
         record['memory'] = compare_memory(folder, frame, errors)
         report['routes'].append(record)
+    control = next(record for record in report['routes']
+                   if record['actions'] == CONTROL_ACTIONS)
+    control_failures = list(entry_errors)
+    for mode in ('native', 'interpreter'):
+        terminal = control['observations'][mode]['terminal_raw_ram_fields']
+        control_failures.extend(
+            f'{mode}: {e}' for e in
+            verify_corridor_progress(entry_states[mode], terminal))
+    errors.extend(e for e in control_failures if e not in entry_errors)
+    report['stage12_positive_control'].update({
+        'exit_frame': control['frame'], 'exit_route': control['name'],
+        'verified': not control_failures and control['parity']['ok'],
+        'errors': control_failures})
     report['ok'] = not errors
     (out / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
     return report
@@ -158,7 +233,8 @@ def main():
     try:
         result = run(args.rom, args.out, args.slot,
                      args.routes if args.routes is not None else DEFAULT_ROUTES)
-    except (ValueError, FileNotFoundError, FileExistsError) as exc:
+    except (ValueError, FileNotFoundError, FileExistsError,
+            subprocess.SubprocessError) as exc:
         parser.error(str(exc))
     print(json.dumps({'ok':result['ok'], 'routes':len(result['routes']),
                       'battle_verified':False, 'errors':result['errors']}, indent=2))
