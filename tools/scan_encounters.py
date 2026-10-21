@@ -47,6 +47,13 @@ def parse_routes(specs):
     return routes
 
 
+def ensure_control_route(routes):
+    """Retain an explicit Stage 12 progress control for every route scan."""
+    if any(actions == CONTROL_ACTIONS for _, actions in routes):
+        return list(routes)
+    return [('__stage12_control', CONTROL_ACTIONS), *routes]
+
+
 def endpoint_frame(actions):
     """Sample 120 frames after the final eight-frame directional press."""
     return 3000 + 130 * (len(actions) - 1) + 120
@@ -109,8 +116,7 @@ def run(rom, out, slot=1, route_specs=DEFAULT_ROUTES, exe=None):
         raise ValueError('only previously verified SAVE slots 1 and 2')
     routes = parse_routes(route_specs)
     # Never allow custom routes to bypass the known-good movement control.
-    if not any(actions == CONTROL_ACTIONS for _, actions in routes):
-        routes.insert(0, ('__stage12_control', CONTROL_ACTIONS))
+    routes = ensure_control_route(routes)
     exe = Path(exe).resolve() if exe else ROOT / 'bin/PhantasyStarNative'
     if not exe.is_file():
         raise FileNotFoundError(f'compiled executable absent: {exe}')
